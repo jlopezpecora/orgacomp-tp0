@@ -1,0 +1,81 @@
+#include <mips/regdef.h>
+
+    .text                       # Indico al compilador que vienen instrucciones
+    .abicalls                   # indico al gcc que uso funciones que soporta la ABI
+    .align 2
+
+    .globl matrix_multiply      # indico al compilador que es global
+    .ent matrix_multiply        # indico al compilador que es una funcion
+
+matrix_multiply:
+    .frame $fp,40, ra
+    .set noreorder
+    .cpload t9
+    .set reorder
+
+    subu sp, sp, 40
+    .cprestore 24               # guardo el gp y lo restaura al salir
+    sw $fp, 28(sp)              # guardo el fp
+    sw ra, 32(sp)               # guardo el ra
+    
+    move $fp, sp                # seteo fp local
+    sw a0, 40($fp)             # guardo 1er argumento en la ABA de la funcion invocante
+    sw a1, 44($fp)             # guardo 2do argumento en la ABA de la funcion invocante
+    
+    move t8, a0               # puntero a m1
+    move t9, a1               # puntero a m2
+    lw a0, 0(t8)              # guardo *m1->rows en a0
+    lw a1, 4(t7)              # guardo *m2->cols en a1
+
+    la t9, create_matrix       # guardo memdir de funcion create_matrix en t0
+    jal ra,t9                     #invocamos la funcion, en v0 quedara el puntero *m3, que no volveremos a tocar
+
+    move t9, t7
+
+    lw t0, 40($fp)             # guardamos *m1->rows en t0
+    li t1, 0                   # inicializo la variable i del loop externo
+    mul t2, t0,t0            # guardo en t5 el valor limite del loop dim*dim
+    
+loop1:
+    bge t1,t2,ret
+    li.d $f4,0                  # inicializamos el elemento a calcular
+    li t4, 0                   # inicializo la variable j del loop interno
+loop2:
+    bge t4,t0,endloop2
+    div t5,t1,t0             #
+    mult t5,t0                # Construccion del indice (i/dim)*dim + j
+    add t5,t5,t4             #
+    sll t5,t5,3
+    addi t5,t5,12
+
+    
+    rem t6,t1,t0             #
+    mul t7,t4,t0             # Construccion del indice (i%dim) + j*dim
+    add t6,t6,t7             #
+    sll t6,t6,3
+    addi t6,t6,12
+    
+    add t7,t5,t8
+    l.d $f6,0(t7)             # cargo elemento de la m1     
+    add t7,t6,t9    
+    l.d $f8,0(t7)             # cargo elemento de la m2
+    mul.d $f6, $f6,$f8 
+    add.d $f4,$f4,$f6
+    
+    sll t3,t1,3               # i*8
+    addi t3,12                 # i*8 + 12 - Preparamos el indice para insertar
+    add t7,t3,v0    
+    s.d $f4, 0(t7)            # Insertamos en m3->array[i]
+    addi t4,t4,1
+    b loop2
+
+endloop2:
+    addi t1,t1,1
+    b loop1
+ret:
+    lw gp,24(sp)
+    lw $fp,28(sp)
+    lw ra,32(sp)
+    addu sp,sp,40
+    jr ra
+.end matrix_multiply
